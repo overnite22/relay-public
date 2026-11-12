@@ -78,6 +78,8 @@ credential file is included in the public source or Docker build context.
   account creation, non-admin denial, password changes and a real guacd SSH session.
 - RDP desktop/redirected-drive upload-download against disposable xrdp and VNC against
   TigerVNC, using the rebuilt sidecar. These are Linux test endpoints, not Windows.
+- Password SSH and SFTP upload/download against OpenSSH offering ECDSA, Ed25519
+  and RSA host keys. This caught and corrected the ECDSA preference mismatch.
 - Regression tests for backup permissions, drive identity separation, changed SSH keys
   and excessive RDM paths.
 

@@ -119,7 +119,9 @@ Both images target amd64 and arm64 and include SBOM/build provenance and license
 
 Pin `RELAY_IMAGE` to a release version for reproducible updates. Export a content backup and keep
 a protected host-volume backup, then run `docker compose pull && docker compose up -d`. Keep
-previous image digests and backups for rollback. Never delete named volumes during updates.
+previous image digests and backups for rollback. Extract updates into the same installation
+directory (or retain the same Compose project name) so the existing named volumes are reused.
+Never delete named volumes during updates.
 
 ## Build and develop
 
