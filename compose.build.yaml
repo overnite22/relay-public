@@ -1,0 +1,6 @@
+services:
+  relay:
+    build:
+      context: .
+      args:
+        VERSION: local

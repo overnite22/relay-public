@@ -1,0 +1,17 @@
+{
+  "id": "/",
+  "name": "Relay",
+  "short_name": "Relay",
+  "description": "Connexions à distance et coffre du homelab",
+  "lang": "fr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#1b1c1f",
+  "theme_color": "#2b7de9",
+  "icons": [
+    { "src": "/icons/relay-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/relay-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/relay-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
