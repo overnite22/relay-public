@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MSI for Relay Desktop (WiX v5). Build: wix build -arch x64 -d Version=X.Y.Z -d ExePath=... -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Relay" Manufacturer="Relay contributors" Version="$(Version)"
+           UpgradeCode="{77d00781-4f3a-4f01-918c-83fa278078c9}" Scope="perMachine" Language="1036" Codepage="1252">
+    <SummaryInformation Description="Relay – gestionnaire de connexions à distance" />
+    <MajorUpgrade DowngradeErrorMessage="Une version plus récente de Relay est déjà installée." />
+    <MediaTemplate EmbedCab="yes" />
+    <Icon Id="RelayIcon" SourceFile="..\icons\icon.ico" />
+    <Property Id="ARPPRODUCTICON" Value="RelayIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/overnite22/relay-public" />
+    <StandardDirectory Id="ProgramMenuFolder" />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Relay">
+        <Component>
+          <File Id="RelayExe" Source="$(ExePath)" Name="relay-desktop.exe" KeyPath="yes">
+            <Shortcut Id="RelayStartMenu" Name="Relay" Directory="ProgramMenuFolder" Advertise="yes"
+                      Icon="RelayIcon" WorkingDirectory="INSTALLFOLDER" Description="Gestionnaire de connexions à distance" />
+          </File>
+        </Component>
+        <Component>
+          <File Source="..\..\..\LICENSE" Name="LICENSE.txt" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+  </Package>
+</Wix>

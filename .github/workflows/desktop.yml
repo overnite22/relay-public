@@ -3,9 +3,9 @@ on:
   push:
     branches: [main, desktop]
     tags: ["desktop-v*"]
-    paths: ["desktop/**", "web/**", ".github/workflows/desktop.yml"]
+    paths: ["desktop/**", ".github/workflows/desktop.yml"]
   pull_request:
-    paths: ["desktop/**", "web/**", ".github/workflows/desktop.yml"]
+    paths: ["desktop/**", ".github/workflows/desktop.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -37,43 +37,39 @@ jobs:
     timeout-minutes: 45
     outputs:
       artifact-id: ${{ steps.upload.outputs.artifact-id }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: |
-            web/package-lock.json
-            desktop/package-lock.json
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: clippy
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: desktop
-      - name: Check tag matches the application version
-        if: startsWith(github.ref, 'refs/tags/desktop-v')
-        shell: bash
+      - name: Version
+        id: version
         run: |
-          want="${GITHUB_REF_NAME#desktop-v}"
-          have="$(node -p "require('./desktop/app/tauri.conf.json').version")"
-          test "$want" = "$have" || { echo "tag $want != tauri.conf.json $have"; exit 1; }
-      - name: Build web interface
-        working-directory: web
-        run: npm ci --no-audit --no-fund && npm run build
-      - name: Lint Windows shell
+          v="$(sed -n 's/^version = "\(.*\)"/\1/p' desktop/Cargo.toml | head -1)"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF" == refs/tags/desktop-v* ]]; then
+            test "${GITHUB_REF_NAME#desktop-v}" = "$v" || { echo "tag ${GITHUB_REF_NAME} != Cargo version $v"; exit 1; }
+          fi
+      - name: Lint and build
         working-directory: desktop
-        run: cargo clippy -p relay-desktop --locked -- -D warnings
-      - name: Build MSI
-        working-directory: desktop
-        run: npm ci --no-audit --no-fund && npx tauri build --ci --bundles msi -- --locked
-      - name: Collect MSI
-        shell: bash
         run: |
-          mkdir dist
-          cp desktop/target/release/bundle/msi/*.msi dist/
-          cd dist && sha256sum *.msi | tee SHA256SUMS
+          cargo clippy -p relay-desktop --locked -- -D warnings
+          cargo build --release -p relay-desktop --locked
+      - name: Build MSI (WiX)
+        working-directory: desktop/app/wix
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          wix build Relay.wxs -arch x64 -d Version=${{ steps.version.outputs.version }} \
+            -d ExePath="$(cygpath -w "$GITHUB_WORKSPACE/desktop/target/release/relay-desktop.exe")" \
+            -o "$(cygpath -w "$GITHUB_WORKSPACE/dist/Relay-${{ steps.version.outputs.version }}-x64.msi")"
+          cd "$GITHUB_WORKSPACE/dist" && sha256sum *.msi | tee SHA256SUMS
       - id: upload
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

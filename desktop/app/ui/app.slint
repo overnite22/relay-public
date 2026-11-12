@@ -1,0 +1,524 @@
+import { Button, LineEdit, ComboBox, CheckBox, TextEdit, ListView, ScrollView, Palette } from "std-widgets.slint";
+
+export struct TreeRow { folder: bool, depth: int, expanded: bool, children: bool, name: string, icon: string, detail: string }
+export struct Field { label: string, value: string }
+
+component Glyph inherits Text {
+    accessible-role: none;
+    font-family: "Segoe Fluent Icons";
+    vertical-alignment: center;
+    horizontal-alignment: center;
+}
+
+component RibbonButton inherits Rectangle {
+    in property <string> icon;
+    in property <string> label;
+    in property <bool> enabled: true;
+    callback clicked;
+    width: max(62px, lbl.preferred-width + 14px);
+    height: 60px;
+    border-radius: 4px;
+    background: ta.pressed && root.enabled ? Palette.selection-background.with-alpha(0.3) : ta.has-hover && root.enabled ? Palette.foreground.with-alpha(0.07) : transparent;
+    accessible-role: button;
+    accessible-label: root.label;
+    ta := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    VerticalLayout {
+        padding: 4px;
+        spacing: 3px;
+        alignment: center;
+        Glyph { text: root.icon; font-size: 22px; color: root.enabled ? Palette.accent-background : Palette.foreground.with-alpha(0.3); }
+        lbl := Text { text: root.label; font-size: 11px; horizontal-alignment: center; color: root.enabled ? Palette.foreground : Palette.foreground.with-alpha(0.35); }
+    }
+}
+
+component RibbonGroup inherits VerticalLayout {
+    in property <string> title;
+    padding-left: 6px;
+    padding-right: 6px;
+    padding-top: 4px;
+    padding-bottom: 2px;
+    spacing: 0px;
+    HorizontalLayout {
+        spacing: 2px;
+        alignment: start;
+        @children
+    }
+    Text { text: root.title; font-size: 10px; color: Palette.foreground.with-alpha(0.5); horizontal-alignment: center; }
+}
+
+component VSep inherits Rectangle {
+    width: 1px;
+    background: Palette.border;
+}
+
+component FormRow inherits VerticalLayout {
+    in property <string> label;
+    spacing: 4px;
+    Text { text: root.label; font-size: 12px; color: Palette.foreground.with-alpha(0.75); }
+    @children
+}
+
+component Dialog inherits Rectangle {
+    in property <string> title;
+    in property <string> error;
+    in property <string> ok-text: "OK";
+    in property <bool> busy;
+    in property <length> card-width: 520px;
+    callback ok();
+    callback cancel();
+    background: #00000099;
+    TouchArea { }
+    card := Rectangle {
+        width: min(root.width - 40px, root.card-width);
+        height: min(root.height - 40px, lay.preferred-height);
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        background: Palette.background;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: Palette.border;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: #00000080;
+        lay := VerticalLayout {
+            padding: 22px;
+            spacing: 12px;
+            Text { text: root.title; font-size: 18px; font-weight: 600; }
+            @children
+            if root.error != "": Text { text: root.error; color: #e5534b; wrap: word-wrap; }
+            HorizontalLayout {
+                alignment: end;
+                spacing: 8px;
+                Button { text: "Annuler"; clicked => { root.cancel(); } }
+                Button { text: root.busy ? "Patientez…" : root.ok-text; primary: true; enabled: !root.busy; clicked => { root.ok(); } }
+            }
+        }
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "Relay";
+    icon: @image-url("icon.png");
+    preferred-width: 1200px;
+    preferred-height: 720px;
+    min-width: 860px;
+    min-height: 540px;
+    default-font-family: "Segoe UI";
+    default-font-size: 13px;
+
+    in property <[string]> source-names;
+    in-out property <int> source-index: -1;
+    in property <bool> connected;
+    in property <bool> busy;
+    in property <string> status;
+    in property <string> user-label;
+
+    in property <[TreeRow]> rows;
+    in-out property <int> selected: -1;
+    in-out property <string> search;
+
+    in property <string> detail-icon;
+    in property <string> detail-title;
+    in property <string> detail-subtitle;
+    in property <[Field]> detail-fields;
+    in property <string> detail-notes;
+    in property <bool> can-open;
+    in property <bool> can-edit;
+
+    in property <[string]> kind-names: ["RDP", "SSH", "VNC", "Web"];
+    in property <[string]> credential-names;
+    in property <[string]> folder-names;
+
+    // Dialogs: "", "source", "unlock", "entry", "folder", "credential", "confirm".
+    in-out property <string> dialog;
+    in-out property <string> dialog-error;
+    in-out property <int> src-type;
+    in-out property <string> src-name;
+    in-out property <string> src-url;
+    in-out property <string> src-token;
+    in-out property <string> src-path;
+    in-out property <bool> src-create: true;
+    in-out property <string> src-password;
+    in-out property <string> src-password2;
+    in-out property <string> unlock-name;
+    in-out property <string> unlock-password;
+    in-out property <string> e-title;
+    in-out property <string> e-name;
+    in-out property <int> e-kind;
+    in-out property <string> e-host;
+    in-out property <string> e-port;
+    in-out property <string> e-url;
+    in-out property <string> e-username;
+    in-out property <int> e-cred;
+    in-out property <int> e-folder;
+    in-out property <string> e-notes;
+    in-out property <string> f-title;
+    in-out property <string> f-name;
+    in-out property <int> f-parent;
+    in-out property <string> c-name;
+    in-out property <string> c-username;
+    in-out property <string> c-domain;
+    in-out property <string> c-password;
+    in-out property <string> c-notes;
+    in-out property <string> confirm-text;
+
+    callback source-selected(int);
+    callback add-source();
+    callback remove-source();
+    callback refresh();
+    callback search-edited(string);
+    callback row-selected(int);
+    callback row-activated(int);
+    callback row-toggled(int);
+    callback tree-key(string);
+    callback open-session();
+    callback new-entry();
+    callback new-folder();
+    callback edit-selected();
+    callback delete-selected();
+    callback new-credential();
+    callback browse-path();
+    callback submit-dialog();
+    callback cancel-dialog();
+
+    VerticalLayout {
+        // Ribbon
+        Rectangle {
+            background: Palette.alternate-background;
+            height: 84px;
+            HorizontalLayout {
+                padding-left: 6px;
+                spacing: 0px;
+                RibbonGroup {
+                    title: "Source de données";
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 4px;
+                        ComboBox {
+                            width: 210px;
+                            model: root.source-names;
+                            current-index <=> root.source-index;
+                            enabled: !root.busy;
+                            selected => { root.source-selected(self.current-index); }
+                        }
+                        Text { text: root.user-label; font-size: 11px; color: Palette.foreground.with-alpha(0.6); overflow: elide; width: 210px; }
+                    }
+                    RibbonButton { icon: "\u{E710}"; label: "Ajouter"; clicked => { root.add-source(); } }
+                    RibbonButton { icon: "\u{E711}"; label: "Retirer"; enabled: root.source-index >= 0; clicked => { root.remove-source(); } }
+                }
+                VSep { }
+                RibbonGroup {
+                    title: "Session";
+                    RibbonButton { icon: "\u{E768}"; label: "Ouvrir"; enabled: root.can-open; clicked => { root.open-session(); } }
+                }
+                VSep { }
+                RibbonGroup {
+                    title: "Édition";
+                    RibbonButton { icon: "\u{E7F4}"; label: "Nouvelle entrée"; enabled: root.connected; clicked => { root.new-entry(); } }
+                    RibbonButton { icon: "\u{E8F4}"; label: "Nouveau dossier"; enabled: root.connected; clicked => { root.new-folder(); } }
+                    RibbonButton { icon: "\u{E70F}"; label: "Modifier"; enabled: root.can-edit; clicked => { root.edit-selected(); } }
+                    RibbonButton { icon: "\u{E74D}"; label: "Supprimer"; enabled: root.can-edit; clicked => { root.delete-selected(); } }
+                }
+                VSep { }
+                RibbonGroup {
+                    title: "Coffre";
+                    RibbonButton { icon: "\u{E8D7}"; label: "Nouvel identifiant"; enabled: root.connected; clicked => { root.new-credential(); } }
+                }
+                VSep { }
+                RibbonGroup {
+                    title: "Affichage";
+                    RibbonButton { icon: "\u{E72C}"; label: "Actualiser"; enabled: root.connected && !root.busy; clicked => { root.refresh(); } }
+                }
+                Rectangle { horizontal-stretch: 1; }
+            }
+        }
+        Rectangle { height: 1px; background: Palette.border; }
+
+        HorizontalLayout {
+            vertical-stretch: 1;
+            // Navigation tree
+            Rectangle {
+                width: 320px;
+                VerticalLayout {
+                    padding: 8px;
+                    spacing: 6px;
+                    LineEdit {
+                        placeholder-text: "Rechercher (nom, hôte)…";
+                        text <=> root.search;
+                        enabled: root.connected;
+                        edited(t) => { root.search-edited(t); }
+                    }
+                    tree-keys := FocusScope {
+                        vertical-stretch: 1;
+                        key-pressed(event) => {
+                            if (event.text == Key.UpArrow) { root.tree-key("up"); return accept; }
+                            if (event.text == Key.DownArrow) { root.tree-key("down"); return accept; }
+                            if (event.text == Key.RightArrow) { root.tree-key("right"); return accept; }
+                            if (event.text == Key.LeftArrow) { root.tree-key("left"); return accept; }
+                            if (event.text == Key.Return) { root.tree-key("enter"); return accept; }
+                            if (event.text == Key.Delete) { root.tree-key("delete"); return accept; }
+                            if (event.text == Key.F2) { root.tree-key("edit"); return accept; }
+                            reject
+                        }
+                    ListView {
+                        vertical-stretch: 1;
+                        for row[i] in root.rows: Rectangle {
+                            height: 26px;
+                            accessible-role: list-item;
+                            accessible-label: row.name;
+                            accessible-item-selected: i == root.selected;
+                            accessible-action-default => { root.selected = i; root.row-selected(i); }
+                            border-radius: 3px;
+                            background: i == root.selected ? Palette.selection-background : ta.has-hover ? Palette.foreground.with-alpha(0.06) : transparent;
+                            ta := TouchArea {
+                                clicked => { tree-keys.focus(); root.selected = i; root.row-selected(i); }
+                                double-clicked => { root.selected = i; root.row-activated(i); }
+                            }
+                            HorizontalLayout {
+                                padding-left: 4px + row.depth * 16px;
+                                padding-right: 6px;
+                                spacing: 4px;
+                                Rectangle {
+                                    width: 14px;
+                                    if row.children: Glyph {
+                                        text: row.expanded ? "\u{E70D}" : "\u{E76C}";
+                                        font-size: 9px;
+                                        color: i == root.selected ? Palette.selection-foreground : Palette.foreground.with-alpha(0.6);
+                                    }
+                                    TouchArea {
+                                        enabled: row.children;
+                                        clicked => { root.row-toggled(i); }
+                                    }
+                                }
+                                Glyph {
+                                    width: 20px;
+                                    text: row.icon;
+                                    font-size: 14px;
+                                    color: row.folder ? #d9a53a : (i == root.selected ? Palette.selection-foreground : Palette.accent-background);
+                                }
+                                Text {
+                                    text: row.name;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                    horizontal-stretch: 1;
+                                    color: i == root.selected ? Palette.selection-foreground : Palette.foreground;
+                                }
+                                Text {
+                                    text: row.detail;
+                                    vertical-alignment: center;
+                                    horizontal-alignment: right;
+                                    font-size: 11px;
+                                    overflow: elide;
+                                    max-width: 130px;
+                                    color: i == root.selected ? Palette.selection-foreground.with-alpha(0.8) : Palette.foreground.with-alpha(0.5);
+                                }
+                            }
+                        }
+                    }
+                    }
+                }
+            }
+            Rectangle { width: 1px; background: Palette.border; }
+
+            // Dashboard of the selected item
+            Rectangle {
+                horizontal-stretch: 1;
+                background: Palette.background;
+                if root.detail-title == "": VerticalLayout {
+                    alignment: center;
+                    spacing: 8px;
+                    Glyph { text: "\u{E8A7}"; font-size: 42px; color: Palette.foreground.with-alpha(0.25); }
+                    Text {
+                        text: root.connected ? "Sélectionnez une entrée ou un dossier." : "Choisissez ou ajoutez une source de données dans le ruban.";
+                        horizontal-alignment: center;
+                        color: Palette.foreground.with-alpha(0.6);
+                    }
+                }
+                if root.detail-title != "": VerticalLayout {
+                    padding: 22px;
+                    spacing: 14px;
+                    HorizontalLayout {
+                        spacing: 14px;
+                        Glyph { text: root.detail-icon; font-size: 34px; width: 44px; color: Palette.accent-background; }
+                        VerticalLayout {
+                            alignment: center;
+                            Text { text: root.detail-title; font-size: 22px; font-weight: 600; overflow: elide; }
+                            Text { text: root.detail-subtitle; color: Palette.foreground.with-alpha(0.6); overflow: elide; }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+                        if root.can-open: Button { text: "Ouvrir la session"; primary: true; clicked => { root.open-session(); } }
+                        if root.can-edit: Button { text: "Modifier"; clicked => { root.edit-selected(); } }
+                    }
+                    Rectangle { height: 1px; background: Palette.border; }
+                    for f in root.detail-fields: HorizontalLayout {
+                        spacing: 12px;
+                        Text { text: f.label; width: 150px; color: Palette.foreground.with-alpha(0.6); }
+                        Text { text: f.value; overflow: elide; horizontal-stretch: 1; }
+                    }
+                    if root.detail-notes != "": Text { text: "Notes"; font-weight: 600; }
+                    if root.detail-notes != "": TextEdit {
+                        text: root.detail-notes;
+                        read-only: true;
+                        wrap: word-wrap;
+                        vertical-stretch: 1;
+                    }
+                    if root.detail-notes == "": Rectangle { vertical-stretch: 1; }
+                }
+            }
+        }
+
+        // Status bar
+        Rectangle {
+            height: 24px;
+            background: Palette.alternate-background;
+            HorizontalLayout {
+                padding-left: 10px;
+                padding-right: 10px;
+                spacing: 8px;
+                if root.busy: Glyph { text: "\u{E895}"; font-size: 11px; }
+                Text { text: root.status; vertical-alignment: center; font-size: 11px; overflow: elide; horizontal-stretch: 1; }
+            }
+        }
+    }
+
+    if root.dialog == "source": Dialog {
+        title: "Ajouter une source de données";
+        error: root.dialog-error;
+        busy: root.busy;
+        ok-text: "Ajouter";
+        ok => { root.submit-dialog(); }
+        cancel => { root.cancel-dialog(); }
+        FormRow {
+            label: "Type";
+            ComboBox { model: ["Serveur Relay", "Base locale (sans serveur)"]; current-index <=> root.src-type; }
+        }
+        FormRow {
+            label: "Nom affiché";
+            LineEdit { text <=> root.src-name; placeholder-text: root.src-type == 0 ? "Relay maison" : "Mes serveurs"; }
+        }
+        if root.src-type == 0: FormRow {
+            label: "Serveur ou lien d'appairage relay://pair?…";
+            LineEdit { text <=> root.src-url; placeholder-text: "https://relay.example.com"; }
+        }
+        if root.src-type == 0: FormRow {
+            label: "Jeton d'appareil (Relay web → Administration → Appareils)";
+            LineEdit { text <=> root.src-token; input-type: password; placeholder-text: "rlt_…"; }
+        }
+        if root.src-type == 1: CheckBox { text: "Créer une nouvelle base"; checked <=> root.src-create; }
+        if root.src-type == 1: FormRow {
+            label: "Fichier de la base";
+            HorizontalLayout {
+                spacing: 6px;
+                LineEdit { text <=> root.src-path; horizontal-stretch: 1; }
+                Button { text: "Parcourir…"; clicked => { root.browse-path(); } }
+            }
+        }
+        if root.src-type == 1: FormRow {
+            label: "Mot de passe maître";
+            LineEdit { text <=> root.src-password; input-type: password; }
+        }
+        if root.src-type == 1 && root.src-create: FormRow {
+            label: "Confirmation";
+            LineEdit { text <=> root.src-password2; input-type: password; }
+        }
+        if root.src-type == 1 && root.src-create: Text {
+            text: "Le mot de passe maître chiffre les identifiants. Il ne peut pas être récupéré s'il est perdu.";
+            wrap: word-wrap;
+            font-size: 11px;
+            color: Palette.foreground.with-alpha(0.6);
+        }
+    }
+
+    if root.dialog == "unlock": Dialog {
+        title: "Déverrouiller « " + root.unlock-name + " »";
+        error: root.dialog-error;
+        busy: root.busy;
+        ok-text: "Déverrouiller";
+        card-width: 420px;
+        ok => { root.submit-dialog(); }
+        cancel => { root.cancel-dialog(); }
+        FormRow {
+            label: "Mot de passe maître";
+            pw := LineEdit {
+                text <=> root.unlock-password;
+                input-type: password;
+                accepted => { root.submit-dialog(); }
+            }
+        }
+    }
+
+    if root.dialog == "entry": Dialog {
+        title: root.e-title;
+        error: root.dialog-error;
+        busy: root.busy;
+        ok-text: "Enregistrer";
+        card-width: 560px;
+        ok => { root.submit-dialog(); }
+        cancel => { root.cancel-dialog(); }
+        HorizontalLayout {
+            spacing: 10px;
+            FormRow { label: "Nom"; horizontal-stretch: 2; LineEdit { text <=> root.e-name; } }
+            FormRow { label: "Protocole"; horizontal-stretch: 1; ComboBox { model: root.kind-names; current-index <=> root.e-kind; } }
+        }
+        if root.e-kind != 3: HorizontalLayout {
+            spacing: 10px;
+            FormRow { label: "Hôte"; horizontal-stretch: 3; LineEdit { text <=> root.e-host; placeholder-text: "serveur.lan ou 10.0.0.5"; } }
+            FormRow { label: "Port"; horizontal-stretch: 1; LineEdit { text <=> root.e-port; input-type: number; } }
+        }
+        if root.e-kind == 3: FormRow { label: "URL"; LineEdit { text <=> root.e-url; placeholder-text: "https://…"; } }
+        HorizontalLayout {
+            spacing: 10px;
+            FormRow { label: "Utilisateur (si pas d'identifiant)"; horizontal-stretch: 1; LineEdit { text <=> root.e-username; } }
+            FormRow { label: "Identifiant du coffre"; horizontal-stretch: 1; ComboBox { model: root.credential-names; current-index <=> root.e-cred; } }
+        }
+        FormRow { label: "Dossier"; ComboBox { model: root.folder-names; current-index <=> root.e-folder; } }
+        FormRow { label: "Notes"; TextEdit { text <=> root.e-notes; height: 90px; wrap: word-wrap; } }
+    }
+
+    if root.dialog == "folder": Dialog {
+        title: root.f-title;
+        error: root.dialog-error;
+        busy: root.busy;
+        ok-text: "Enregistrer";
+        card-width: 440px;
+        ok => { root.submit-dialog(); }
+        cancel => { root.cancel-dialog(); }
+        FormRow { label: "Nom"; LineEdit { text <=> root.f-name; accepted => { root.submit-dialog(); } } }
+        FormRow { label: "Dossier parent"; ComboBox { model: root.folder-names; current-index <=> root.f-parent; } }
+    }
+
+    if root.dialog == "credential": Dialog {
+        title: "Nouvel identifiant";
+        error: root.dialog-error;
+        busy: root.busy;
+        ok-text: "Enregistrer";
+        card-width: 480px;
+        ok => { root.submit-dialog(); }
+        cancel => { root.cancel-dialog(); }
+        FormRow { label: "Nom"; LineEdit { text <=> root.c-name; placeholder-text: "Admin domaine"; } }
+        HorizontalLayout {
+            spacing: 10px;
+            FormRow { label: "Utilisateur"; horizontal-stretch: 1; LineEdit { text <=> root.c-username; } }
+            FormRow { label: "Domaine"; horizontal-stretch: 1; LineEdit { text <=> root.c-domain; } }
+        }
+        FormRow { label: "Mot de passe"; LineEdit { text <=> root.c-password; input-type: password; } }
+        FormRow { label: "Notes"; TextEdit { text <=> root.c-notes; height: 70px; wrap: word-wrap; } }
+    }
+
+    if root.dialog == "confirm": Dialog {
+        title: "Confirmer";
+        error: root.dialog-error;
+        busy: root.busy;
+        ok-text: "Supprimer";
+        card-width: 420px;
+        ok => { root.submit-dialog(); }
+        cancel => { root.cancel-dialog(); }
+        Text { text: root.confirm-text; wrap: word-wrap; }
+    }
+}
