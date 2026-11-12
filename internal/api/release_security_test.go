@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -64,6 +66,8 @@ func TestInteractiveSSHHostKeyIsPinnedBeforeAuthentication(t *testing.T) {
 	key, _ := ssh.NewSignerFromKey(private)
 	rsaPrivate, _ := rsa.GenerateKey(rand.Reader, 2048)
 	rsaKey, _ := ssh.NewSignerFromKey(rsaPrivate)
+	ecdsaPrivate, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	ecdsaKey, _ := ssh.NewSignerFromKey(ecdsaPrivate)
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -80,6 +84,7 @@ func TestInteractiveSSHHostKeyIsPinnedBeforeAuthentication(t *testing.T) {
 				config := &ssh.ServerConfig{NoClientAuth: true}
 				config.AddHostKey(key)
 				config.AddHostKey(rsaKey)
+				config.AddHostKey(ecdsaKey)
 				server, _, _, _ := ssh.NewServerConn(conn, config)
 				if server != nil {
 					server.Close()
@@ -89,7 +94,7 @@ func TestInteractiveSSHHostKeyIsPinnedBeforeAuthentication(t *testing.T) {
 	}()
 	address := ln.Addr().String()
 	line, err := s.verifySSHHostKey(context.Background(), address)
-	if err != nil || !strings.Contains(line, "ssh-ed25519 ") {
+	if err != nil || !strings.Contains(line, "ecdsa-sha2-nistp256 ") {
 		t.Fatalf("first pin failed: %s %v", line, err)
 	}
 	if _, err := s.verifySSHHostKey(context.Background(), address); err != nil {

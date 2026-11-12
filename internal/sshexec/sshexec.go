@@ -79,8 +79,8 @@ var ErrHostKeyChanged = errors.New("clé d'hôte modifiée")
 // the same server key when a host offers several. This follows libssh2's order
 // in the supported guacd image, excluding legacy SHA-1 signatures.
 func HostKeyAlgorithms() []string {
-	return []string{ssh.KeyAlgoED25519, ssh.KeyAlgoECDSA256, ssh.KeyAlgoECDSA384,
-		ssh.KeyAlgoECDSA521, ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256}
+	return []string{ssh.KeyAlgoECDSA256, ssh.KeyAlgoECDSA384, ssh.KeyAlgoECDSA521,
+		ssh.KeyAlgoED25519, ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256}
 }
 
 // limitedBuffer conserve au plus max octets, en sécurité entre goroutines.

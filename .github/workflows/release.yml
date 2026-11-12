@@ -12,6 +12,10 @@ on:
         description: Promote an already verified version to latest without rebuilding
         type: boolean
         default: false
+      rebuild_guacd:
+        description: Force a fresh build of the protocol sidecar
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -24,6 +28,8 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 22
@@ -71,7 +77,21 @@ jobs:
           build-args: VERSION=${{ inputs.version || github.ref_name }}
           sbom: true
           provenance: mode=max
+      - name: Determine whether guacd sources changed
+        id: guacd
+        env:
+          FORCE_GUACD: ${{ inputs.rebuild_guacd }}
+        run: |
+          previous=$(git describe --tags --abbrev=0 "${GITHUB_SHA}^" 2>/dev/null || true)
+          if [ "$FORCE_GUACD" = true ] || [ -z "$previous" ] || \
+             ! git diff --quiet "$previous" "$GITHUB_SHA" -- Dockerfile.guacd patches/ || \
+             ! docker buildx imagetools inspect "ghcr.io/${GITHUB_REPOSITORY}:guacd-1.6.0" >/dev/null 2>&1; then
+            echo "rebuild=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rebuild=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Publish maintained guacd
+        if: steps.guacd.outputs.rebuild == 'true'
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           context: .
