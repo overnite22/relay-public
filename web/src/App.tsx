@@ -28,10 +28,13 @@ import {
   Trash2,
   X,
   Zap,
+ Users,
+ LogOut,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, entryInput } from "./api";
+import { api, entryInput, localAuthApi } from "./api";
 import { AvailabilityView } from "./components/AvailabilityView";
+import {UsersDialog,PasswordDialog} from "./components/UsersDialog";
 import { BackupDialog } from "./components/BackupDialog";
 import { WorkspacesDialog } from "./components/WorkspacesDialog";
 import { FolderCredentialsDialog } from "./components/FolderCredentialsDialog";
@@ -68,6 +71,8 @@ type Dialog =
   | { type: "credentials" }
   | { type: "audit" }
   | { type: "backups" }
+ | {type:"users"}
+ | {type:"password"}
   | { type: "workspaces" }
   | { type: "folder-credentials"; id:string }
   | { type: "recordings" }
@@ -97,7 +102,7 @@ function loadSet(key: string): Set<string> {
 export default function App() {
   const [tree, setTree] = useState<Tree>({ folders: [], entries: [] });
   const [credentials, setCredentials] = useState<Credential[]>([]);
-  const [me, setMe] = useState<{ user: string; version: string; canManageBackups: boolean } | null>(null);
+  const [me, setMe] = useState<{ user: string; version: string; canManageBackups: boolean; localAuth:boolean; isAdmin:boolean } | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<Record<string, ConnectionTest>>({});
   const [fatal, setFatal] = useState("");
   const [selection, setSelection] = useState<Selection>({ type: "root" });
@@ -549,6 +554,7 @@ export default function App() {
             label: "Maintenance",
             actions: [
               { id: "dups", label: "Doublons", Icon: CopyX, color: "#d29922", large: true, onClick: () => setDialog({ type: "duplicates" }) },
+              ...(me?.localAuth&&me.isAdmin?[{id:"users",label:"Comptes locaux",Icon:Users,large:true,onClick:()=>setDialog({type:"users" as const})}]:[]),
               ...(me?.canManageBackups ? [{ id: "backups", label: "Sauvegarde", Icon: HardDrive, color: "#58a6ff", large: true, onClick: () => setDialog({type:"backups" as const}) }] : []),
             ],
           },
@@ -623,6 +629,7 @@ export default function App() {
         <div className="spacer" />
         <InstallPWA />
         <span className="title-user">{me?.user}</span>
+ {me?.localAuth&&<><button className="icon-btn" title="Changer mon mot de passe" onClick={()=>setDialog({type:"password"})}><KeyRound size={15}/></button><button className="icon-btn" title="Se déconnecter" onClick={()=>{void localAuthApi.logout().then(()=>location.reload()).catch((e:Error)=>toast(e.message))}}><LogOut size={15}/></button></>}
       </header>
 
       <Ribbon tabs={ribbon} />
@@ -782,7 +789,9 @@ export default function App() {
         </div>
       )}
 
-      {dialog?.type==="backups"&&<BackupDialog onClose={()=>setDialog(null)}/>}
+      {dialog?.type==="users"&&me&&<UsersDialog current={me.user} onClose={()=>setDialog(null)}/>}
+ {dialog?.type==="password"&&<PasswordDialog onClose={()=>setDialog(null)}/>}
+ {dialog?.type==="backups"&&<BackupDialog onClose={()=>setDialog(null)}/>}
       {dialog?.type==="workspaces"&&<WorkspacesDialog tree={tree} currentIds={tabs.filter(t=>!t.tool&&!t.quick).map(t=>t.entryId)} onOpen={openWorkspace} onClose={()=>setDialog(null)}/>}
       {dialog?.type==="folder-credentials"&&tree.folders.find(f=>f.id===dialog.id)&&<FolderCredentialsDialog folder={tree.folders.find(f=>f.id===dialog.id)!} tree={tree} credentials={credentials} onSaved={reload} onClose={()=>setDialog(null)}/>}
       {dialog?.type === "connection-test" && (

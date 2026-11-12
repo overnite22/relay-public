@@ -31,13 +31,14 @@ var Version = "dev"
 
 // Options paramètre le serveur API.
 type Options struct {
-	AdminUsers []string
-	SSHHostKey func(context.Context, string) (string, error)
-	Store      *store.Store
-	DataDir    string
-	Vault      *vault.Vault
-	Auth       *auth.Authenticator
-	GuacdAddr  string
+	LocalSetupToken string
+	AdminUsers      []string
+	SSHHostKey      func(context.Context, string) (string, error)
+	Store           *store.Store
+	DataDir         string
+	Vault           *vault.Vault
+	Auth            *auth.Authenticator
+	GuacdAddr       string
 	// BridgeHost est le nom par lequel guacd joint Relay (ex. « relay ») ;
 	// il active les consoles Proxmox natives, relayées par guacd.
 	BridgeHost    string
@@ -49,6 +50,7 @@ type Options struct {
 
 // Server porte l'état de l'API.
 type Server struct {
+	login       loginGate
 	dataGuard   sync.RWMutex
 	opt         Options
 	tokens      *sessionTokens
@@ -62,9 +64,10 @@ func New(opt Options) *Server {
 	if opt.Log == nil {
 		opt.Log = slog.Default()
 	}
-	s := &Server{opt: opt, tokens: newSessionTokens(), log: opt.Log, runs: runRegistry{runs: map[string]*activeRun{}}}
+	s := &Server{login: loginGate{work: make(chan struct{}, 4)}, opt: opt, tokens: newSessionTokens(), log: opt.Log, runs: runRegistry{runs: map[string]*activeRun{}}}
 	if opt.Auth != nil && opt.Store != nil {
 		opt.Auth.SetTokenResolver(s.resolveDeviceToken)
+		opt.Auth.SetLocalResolver(s.resolveLocalSession)
 	}
 	return s
 }
@@ -81,6 +84,10 @@ func (s *Server) Handler() http.Handler {
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "version": Version})
 	})
+	s.localRoutes(r)
+	if s.localMode() && s.opt.Static != nil {
+		r.Handle("/*", s.opt.Static)
+	}
 	r.Group(func(r chi.Router) {
 		r.Use(s.opt.Auth.Middleware)
 		r.Use(s.dataAccess)
@@ -88,6 +95,10 @@ func (s *Server) Handler() http.Handler {
 			r.Use(s.csrf)
 			r.Use(s.deviceUsage)
 			s.deviceRoutes(r)
+			r.Get("/users", s.listLocalUsers)
+			r.Post("/users", s.createLocalUser)
+			r.Put("/users/{email}", s.updateLocalUser)
+			r.Post("/account/password", s.changeLocalPassword)
 			r.Get("/me", s.me)
 			r.Post("/backups/export", s.exportBackup)
 			r.Post("/backups/restore", s.restoreBackup)
@@ -126,7 +137,7 @@ func (s *Server) Handler() http.Handler {
 			s.integrationRoutes(r)
 			s.commandRoutes(r)
 		})
-		if s.opt.Static != nil {
+		if s.opt.Static != nil && !s.localMode() {
 			r.Handle("/*", s.opt.Static)
 		}
 	})
@@ -215,7 +226,7 @@ func (s *Server) audit(r *http.Request, action, target, detail string) {
 // ---------- Utilisateur / arbre ----------
 
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"user": auth.User(r.Context()), "version": Version, "canManageBackups": s.canManageBackups(r)})
+	writeJSON(w, http.StatusOK, map[string]any{"user": auth.User(r.Context()), "version": Version, "canManageBackups": s.canManageBackups(r), "localAuth": s.localMode(), "isAdmin": s.localAdministrator(r)})
 }
 
 func (s *Server) tree(w http.ResponseWriter, r *http.Request) {

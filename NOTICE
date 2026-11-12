@@ -5,3 +5,6 @@ Licensed under the Apache License, Version 2.0.
 Relay is an independent project and is not affiliated with Devolutions.
 This product uses Apache Guacamole components developed by The Apache Software Foundation.
 Apache Guacamole and Apache are trademarks of The Apache Software Foundation.
+
+The guacd sidecar includes an Apache Guacamole PostConnect backport
+(GUACAMOLE-2328, upstream ab36756b596520ae2a94cd4d25e406e0b5aa820b).

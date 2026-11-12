@@ -12,6 +12,7 @@ web/dist/*
 .env
 .env.*
 !.env.example
+!.env.sso.example
 *.relay
 *.rdm
 *.p12

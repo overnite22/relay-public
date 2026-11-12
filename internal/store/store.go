@@ -195,6 +195,10 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("schéma des appareils : %w", err)
 	}
+	if _, err := db.Exec(localUsersSchema); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("schéma local : %w", err)
+	}
 	return &Store{db: db}, nil
 }
 

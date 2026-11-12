@@ -2123,3 +2123,30 @@ select.grow {
 .pwa-instructions { padding-left: 22px; line-height: 1.65; }
 .pwa-instructions li { margin-block: 8px; }
 .pwa-instructions svg { vertical-align: -3px; }
+
+/* Local accounts: the same window chrome and controls as the connection manager. */
+.auth-page { min-height:100dvh; background:var(--bg); color:var(--text); }
+.auth-center { display:grid; place-items:center; min-height:calc(100dvh - 32px); padding:32px 16px; }
+.auth-card { width:min(440px,100%); border:1px solid var(--border); background:var(--bg-panel); border-radius:5px; box-shadow:0 14px 48px #0004; padding:28px; }
+.auth-card-heading { display:flex; align-items:center; gap:14px; margin-bottom:24px; color:var(--accent); }
+.auth-card h1 { margin:0; font-size:19px; color:var(--text); }
+.auth-card-heading p { margin:5px 0 0; color:var(--text-muted); font-size:12px; }
+.auth-card form,.users-editor { display:flex; flex-direction:column; gap:16px; }
+.auth-card label,.users-editor>label:not(.check) { display:flex; flex-direction:column; gap:7px; font-size:12px; }
+.auth-card input,.users-editor input:not([type=checkbox]) { width:100%; }
+.auth-card .primary { justify-content:center; min-height:36px; margin-top:6px; }
+.auth-setup { padding:12px; background:var(--bg); border:1px solid var(--border); border-radius:3px; }
+.auth-setup p { margin:0 0 8px; }
+.auth-setup code { display:block; overflow-wrap:anywhere; margin-bottom:14px; font-size:11px; }
+.users-layout { display:grid; grid-template-columns:240px 1fr; gap:24px; }
+.users-list { border-right:1px solid var(--border); padding-right:16px; }
+.users-list>.btn { margin-bottom:14px; }
+.user-row { width:100%; display:flex; flex-direction:column; align-items:flex-start; gap:6px; text-align:left; padding:12px; border:1px solid transparent; background:transparent; color:var(--text); border-radius:3px; overflow-wrap:anywhere; }
+.user-row.selected { background:var(--selection); border-color:var(--border); }
+.user-row span { color:var(--text-muted); font-size:11px; }
+.users-editor h3 { margin:0; }
+.users-editor .muted { margin:0; line-height:1.5; font-size:12px; }
+@media(max-width:620px){.users-layout{grid-template-columns:1fr}.users-list{border-right:0;border-bottom:1px solid var(--border);padding:0 0 12px}.auth-card{padding:20px}}
+.auth-card input,.users-editor input:not([type=checkbox]) { padding:8px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; outline:none; }
+.auth-card input:focus,.users-editor input:focus { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-soft); }
+.auth-page { overflow:auto; max-height:100dvh; }

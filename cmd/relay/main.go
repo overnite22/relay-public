@@ -4,7 +4,9 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/netip"
@@ -40,6 +42,20 @@ func list(v string) []string {
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "setup-token" {
+		b, err := os.ReadFile(filepath.Join(env("RELAY_DATA_DIR", "./data"), "setup.key"))
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Code indisponible : instance déjà initialisée, ou démarrage requis.")
+			os.Exit(1)
+		}
+		key, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(b)))
+		if err != nil || len(key) != 32 {
+			fmt.Fprintln(os.Stderr, "Code d’initialisation illisible.")
+			os.Exit(1)
+		}
+		fmt.Println(base64.RawURLEncoding.EncodeToString(key))
+		return
+	}
 	// "relay healthcheck" : sonde pour le HEALTHCHECK Docker (image sans shell).
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
 		addr := env("RELAY_LISTEN", ":8080")
@@ -91,7 +107,22 @@ func run(log *slog.Logger) error {
 		}
 		proxies = append(proxies, pr)
 	}
-	mode := env("RELAY_AUTH_MODE", "userinfo")
+	mode := env("RELAY_AUTH_MODE", "local")
+	setupToken := ""
+	if mode == "local" {
+		count, err := st.LocalUserCount(context.Background())
+		if err != nil {
+			return err
+		}
+		if count == 0 {
+			b, _, err := vault.LoadOrCreateKey(filepath.Join(dataDir, "setup.key"))
+			if err != nil {
+				return err
+			}
+			setupToken = base64.RawURLEncoding.EncodeToString(b)
+			log.Warn("Initialisez Relay avec le code obtenu par : docker compose exec relay /relay setup-token")
+		}
+	}
 	a, err := auth.New(auth.Config{
 		Mode:           mode,
 		UserinfoURL:    env("RELAY_OAUTH2_USERINFO_URL", "http://oauth2-proxy:4180/oauth2/userinfo"),
@@ -108,17 +139,18 @@ func run(log *slog.Logger) error {
 	}
 
 	srv := api.New(api.Options{
-		Store:         st,
-		DataDir:       dataDir,
-		AdminUsers:    list(env("RELAY_ADMIN_USERS", "")),
-		RecordingsDir: filepath.Join(dataDir, "recordings"),
-		Vault:         v,
-		Auth:          a,
-		GuacdAddr:     env("RELAY_GUACD_ADDR", "guacd:4822"),
-		BridgeHost:    env("RELAY_BRIDGE_HOST", ""),
-		PublicOrigin:  strings.TrimRight(env("RELAY_PUBLIC_ORIGIN", ""), "/"),
-		Static:        web.Handler(),
-		Log:           log,
+		LocalSetupToken: setupToken,
+		Store:           st,
+		DataDir:         dataDir,
+		AdminUsers:      list(env("RELAY_ADMIN_USERS", "")),
+		RecordingsDir:   filepath.Join(dataDir, "recordings"),
+		Vault:           v,
+		Auth:            a,
+		GuacdAddr:       env("RELAY_GUACD_ADDR", "guacd:4822"),
+		BridgeHost:      env("RELAY_BRIDGE_HOST", ""),
+		PublicOrigin:    strings.TrimRight(env("RELAY_PUBLIC_ORIGIN", ""), "/"),
+		Static:          web.Handler(),
+		Log:             log,
 	})
 	httpSrv := &http.Server{
 		Addr:              env("RELAY_LISTEN", ":8080"),

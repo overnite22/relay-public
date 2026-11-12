@@ -61,6 +61,7 @@ type Authenticator struct {
 	cache map[[32]byte]cached
 
 	tokens TokenResolver
+	local  func(*http.Request) (string, error)
 }
 
 type cached struct {
@@ -79,6 +80,7 @@ func New(cfg Config) (*Authenticator, error) {
 		if cfg.Header == "" || len(cfg.TrustedProxies) == 0 {
 			return nil, errors.New("auth: RELAY_USER_HEADER et RELAY_TRUSTED_PROXIES requis en mode header")
 		}
+	case "local":
 	case "dev":
 		if cfg.DevUser == "" {
 			return nil, errors.New("auth: RELAY_DEV_USER requis en mode dev")
@@ -116,6 +118,11 @@ func (a *Authenticator) Resolve(r *http.Request) (string, string, error) {
 		}
 		user, err = a.tokens(r.Context(), strings.TrimPrefix(raw, TokenPrefix))
 		method = MethodToken
+	case a.cfg.Mode == "local":
+		if a.local == nil {
+			return "", "", ErrUnauthenticated
+		}
+		user, err = a.local(r)
 	case a.cfg.Mode == "dev":
 		user = a.cfg.DevUser
 	case a.cfg.Mode == "header":
@@ -237,3 +244,6 @@ func User(ctx context.Context) string {
 	u, _ := ctx.Value(ctxKey{}).(string)
 	return u
 }
+
+func (a *Authenticator) Mode() string                                           { return a.cfg.Mode }
+func (a *Authenticator) SetLocalResolver(f func(*http.Request) (string, error)) { a.local = f }

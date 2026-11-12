@@ -69,7 +69,7 @@ func scanDevice(r rowScanner) (Device, error) {
 }
 
 // CreateDevice enregistre un appareil ; hash est le SHA-256 du jeton.
-func (s *Store) CreateDevice(ctx context.Context, user, name string, hash []byte) (Device, error) {
+func (s *Store) CreateDevice(ctx context.Context, user, name string, hash []byte, localProof ...[]byte) (Device, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return Device{}, ErrInvalid{Msg: "nom d'appareil requis"}
@@ -81,9 +81,24 @@ func (s *Store) CreateDevice(ctx context.Context, user, name string, hash []byte
 		return Device{}, errors.New("empreinte de jeton invalide")
 	}
 	d := Device{ID: NewID(), User: user, Name: name, CreatedAt: ts(now())}
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO device_tokens (id, user, name, token_hash, created_at) VALUES (?, ?, ?, ?, ?)`,
-		d.ID, d.User, d.Name, hash, d.CreatedAt.UnixMilli())
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Device{}, err
+	}
+	defer tx.Rollback()
+	if len(localProof) > 0 {
+		actor, err := authorizeLocalTx(ctx, tx, localProof[0], false)
+		if err != nil {
+			return Device{}, err
+		}
+		if actor != user {
+			return Device{}, ErrInvalid{"session invalide"}
+		}
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO device_tokens (id, user, name, token_hash, created_at) VALUES (?, ?, ?, ?, ?)`, d.ID, d.User, d.Name, hash, d.CreatedAt.UnixMilli())
+	if err == nil {
+		err = tx.Commit()
+	}
 	return d, err
 }
 

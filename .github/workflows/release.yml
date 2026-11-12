@@ -60,14 +60,26 @@ jobs:
           build-args: VERSION=${{ inputs.version || github.ref_name }}
           sbom: true
           provenance: mode=max
+      - name: Publish maintained guacd
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: .
+          file: Dockerfile.guacd
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ghcr.io/${{ github.repository }}:guacd-1.6.0
+          sbom: true
+          provenance: mode=max
       - name: Check published image vulnerabilities
         env:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
           IMAGE_VERSION: ${{ inputs.version || github.ref_name }}
         run: |
+          for image in "${IMAGE_VERSION}" guacd-1.6.0; do
           for platform in linux/amd64 linux/arm64; do
             docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD aquasec/trivy:0.76.2 image \
               --platform "$platform" --scanners vuln --severity HIGH,CRITICAL --exit-code 1 \
-              "ghcr.io/${GITHUB_REPOSITORY}:${IMAGE_VERSION}"
+              "ghcr.io/${GITHUB_REPOSITORY}:${image}"
+          done
           done

@@ -28,14 +28,14 @@ async function req<T>(method: string, path: string, body?: unknown, signal?: Abo
   }
   if (!resp.ok) {
     let msg = (data as { error?: string } | undefined)?.error ?? `Erreur ${resp.status}`;
-    if (resp.status === 401) msg = "Session SSO expirée : rechargez la page pour vous reconnecter.";
+    if (resp.status === 401 && path !== "/api/auth/login") msg = "Session expirée : rechargez la page pour vous reconnecter.";
     throw new ApiError(resp.status, msg);
   }
   return data as T;
 }
 
 export const api = {
-  me: () => req<{ user: string; version: string; canManageBackups: boolean }>("GET", "/api/me"),
+  me: () => req<{ user: string; version: string; canManageBackups: boolean; localAuth:boolean; isAdmin:boolean }>("GET", "/api/me"),
   tree: () => req<Tree>("GET", "/api/tree"),
 
   saveFolder: (f: { name: string; parentId: string | null }, id?: string) =>
@@ -202,4 +202,16 @@ export const backupsApi = {
       }),
     );
   },
+};
+
+export interface LocalUser { email: string; admin: boolean; disabled: boolean }
+export const localAuthApi = {
+  status: () => req<{mode:string; initialized:boolean}>("GET", "/api/auth/status"),
+  login: (email:string,password:string) => req<void>("POST","/api/auth/login",{email,password}),
+  setup: (email:string,password:string,token:string) => req<void>("POST","/api/auth/setup",{email,password,token}),
+  logout: () => req<void>("POST","/api/auth/logout"),
+  users: () => req<LocalUser[]>("GET","/api/users"),
+  create: (email:string,password:string,admin:boolean) => req<void>("POST","/api/users",{email,password,admin}),
+  update: (email:string,values:{password?:string;admin?:boolean;disabled?:boolean}) => req<void>("PUT",`/api/users/${encodeURIComponent(email)}`,values),
+  password: (current:string,password:string) => req<void>("POST","/api/account/password",{current,password}),
 };

@@ -21,3 +21,6 @@
 !THIRD_PARTY_NOTICES.md
 !scripts/
 !scripts/collect-licenses.mjs
+
+!patches/
+!patches/**

@@ -10,7 +10,7 @@ import (
 
 var snapshotTables = []string{
 	"credentials", "folders", "sources", "entries", "folder_credentials",
-	"entry_attachments", "sync_exclusions", "saved_commands", "command_runs", "ssh_known_hosts", "workspaces", "audit", "device_tokens",
+	"entry_attachments", "sync_exclusions", "saved_commands", "command_runs", "ssh_known_hosts", "workspaces", "audit",
 }
 
 type SnapshotCell struct {
@@ -30,12 +30,17 @@ type Snapshot struct {
 
 func quoted(name string) string { return `"` + strings.ReplaceAll(name, `"`, `""`) + `"` }
 
-func (s *Store) Snapshot(ctx context.Context) (Snapshot, error) {
+func (s *Store) Snapshot(ctx context.Context, localAdminProof ...[]byte) (Snapshot, error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return Snapshot{}, err
 	}
 	defer tx.Rollback()
+	if len(localAdminProof) > 0 {
+		if _, err = authorizeLocalTx(ctx, tx, localAdminProof[0], true); err != nil {
+			return Snapshot{}, err
+		}
+	}
 	snapshot := Snapshot{Version: 1}
 	for _, name := range snapshotTables {
 		rows, err := tx.QueryContext(ctx, "SELECT * FROM "+quoted(name))
@@ -87,8 +92,8 @@ func (s *Store) Snapshot(ctx context.Context) (Snapshot, error) {
 
 // RestoreSnapshot replaces all backed-up data in a transaction. prepare installs
 // staged recording files just before commit, after validating the foreign keys.
-func (s *Store) RestoreSnapshot(ctx context.Context, snapshot Snapshot, prepare func() error) error {
-	if snapshot.Version != 1 || len(snapshot.Tables) != len(snapshotTables) {
+func (s *Store) RestoreSnapshot(ctx context.Context, snapshot Snapshot, prepare func() error, localAdminProof ...[]byte) error {
+	if snapshot.Version != 1 {
 		return ErrInvalid{"version de sauvegarde incompatible"}
 	}
 	tables := map[string]SnapshotTable{}
@@ -98,11 +103,22 @@ func (s *Store) RestoreSnapshot(ctx context.Context, snapshot Snapshot, prepare 
 		}
 		tables[table.Name] = table
 	}
+	// Old archives included device tokens. Never replace installation access
+	// policy or revive a revoked device when restoring application content.
+	delete(tables, "device_tokens")
+	if len(tables) != len(snapshotTables) {
+		return ErrInvalid{"tables de sauvegarde incompatibles"}
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	if len(localAdminProof) > 0 {
+		if _, err = authorizeLocalTx(ctx, tx, localAdminProof[0], true); err != nil {
+			return err
+		}
+	}
 	if _, err := tx.ExecContext(ctx, "PRAGMA defer_foreign_keys = ON"); err != nil {
 		return err
 	}

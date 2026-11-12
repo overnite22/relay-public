@@ -4,3 +4,8 @@ services:
       context: .
       args:
         VERSION: local
+  guacd:
+    image: relay-guacd:local
+    build:
+      context: .
+      dockerfile: Dockerfile.guacd

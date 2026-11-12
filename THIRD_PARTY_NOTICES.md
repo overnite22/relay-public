@@ -22,3 +22,10 @@ its upstream repository at the version recorded in web/package-lock.json.
 The corresponding unmodified noVNC 1.7.0 source is available at
 https://github.com/novnc/noVNC/archive/refs/tags/v1.7.0.tar.gz
 and https://registry.npmjs.org/@novnc/novnc/-/novnc-1.7.0.tgz .
+
+The guacd sidecar uses Apache Guacamole server 1.6.0 source with the included
+PostConnect backport from Apache commit ab36756b596520ae2a94cd4d25e406e0b5aa820b
+(GUACAMOLE-2328). Its source checksum and build recipe are in Dockerfile.guacd.
+System libraries retain their Alpine package licenses; the package source and
+build recipes are published at https://gitlab.alpinelinux.org/alpine/aports
+(branch 3.24-stable) and https://pkgs.alpinelinux.org/packages?branch=v3.24 .

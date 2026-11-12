@@ -1,4 +1,4 @@
-# Copy .env.example to .env and configure your OpenID Connect provider.
+# Copy .env.example to .env. Local accounts are enabled by default.
 services:
   init:
     image: busybox:1.37.0
@@ -15,12 +15,10 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
+    ports: ["127.0.0.1:${RELAY_PORT:-8080}:8080"]
     environment:
-      RELAY_AUTH_MODE: userinfo
-      RELAY_OAUTH2_USERINFO_URL: http://sso:4180/oauth2/userinfo
-      RELAY_PUBLIC_ORIGIN: ${RELAY_PUBLIC_ORIGIN:?Set the public HTTPS URL in .env}
-      RELAY_ALLOWED_USERS: ${RELAY_ALLOWED_USERS:?Set allowed email addresses}
-      RELAY_ADMIN_USERS: ${RELAY_ADMIN_USERS:?Set instance backup administrators}
+      RELAY_AUTH_MODE: local
+      RELAY_PUBLIC_ORIGIN: ${RELAY_PUBLIC_ORIGIN:-http://localhost:8080}
       RELAY_GUACD_ADDR: guacd:4822
       RELAY_BRIDGE_HOST: relay
     volumes: [data:/data]
@@ -29,38 +27,13 @@ services:
       guacd: {condition: service_started}
     networks: [backend]
   guacd:
-    image: guacamole/guacd:1.6.0
+    image: ${RELAY_GUACD_IMAGE:-ghcr.io/overnite22/relay-public:guacd-1.6.0}
     restart: unless-stopped
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     volumes: [drive:/drive]
     depends_on:
       init: {condition: service_completed_successfully}
-    networks: [backend]
-  sso:
-    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.6
-    restart: unless-stopped
-    read_only: true
-    cap_drop: [ALL]
-    security_opt: ["no-new-privileges:true"]
-    ports: ["127.0.0.1:${RELAY_PORT:-4180}:4180"]
-    environment:
-      OAUTH2_PROXY_HTTP_ADDRESS: 0.0.0.0:4180
-      OAUTH2_PROXY_PROVIDER: oidc
-      OAUTH2_PROXY_OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:?Set your issuer URL}
-      OAUTH2_PROXY_CLIENT_ID: ${OIDC_CLIENT_ID:?Set your client ID}
-      OAUTH2_PROXY_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:?Set your client secret}
-      OAUTH2_PROXY_REDIRECT_URL: ${RELAY_PUBLIC_ORIGIN}/oauth2/callback
-      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET:?Generate a cookie secret}
-      OAUTH2_PROXY_COOKIE_SECURE: "true"
-      OAUTH2_PROXY_REVERSE_PROXY: "true"
-      OAUTH2_PROXY_EMAIL_DOMAINS: "*"
-      OAUTH2_PROXY_UPSTREAMS: http://relay:8080/
-      OAUTH2_PROXY_SET_XAUTHREQUEST: "true"
-      OAUTH2_PROXY_SKIP_PROVIDER_BUTTON: "true"
-      OAUTH2_PROXY_SKIP_AUTH_ROUTES: "^/manifest\\.webmanifest$,^/sw\\.js$,^/icons/(relay-(192|512|maskable-512)|apple-touch-icon)\\.png$,^/api/"
-      OAUTH2_PROXY_SKIP_AUTH_STRIP_HEADERS: "false"
-    depends_on: [relay]
     networks: [backend]
 volumes:
   data: {}

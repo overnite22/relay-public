@@ -1,0 +1,37 @@
+# syntax=docker/dockerfile:1
+FROM alpine:3.24 AS build
+RUN apk add --no-cache build-base pkgconf libtool autoconf automake curl \
+    ca-certificates cairo-dev libjpeg-turbo-dev libpng-dev util-linux-dev \
+    libvncserver-dev libssh2-dev openssl-dev pango-dev pulseaudio-dev \
+    libwebsockets-dev libwebp-dev freerdp-dev pax-utils patch
+WORKDIR /src
+COPY patches/guacd-freerdp-postconnect.patch /patches/guacd-freerdp-postconnect.patch
+RUN curl -fsSLo guacamole.tar.gz https://archive.apache.org/dist/guacamole/1.6.0/source/guacamole-server-1.6.0.tar.gz \
+    && echo '8bc45675da96d7b6f39728160181e3d4ff3c08f460f6d26de5805b642bf13f2b  guacamole.tar.gz' | sha256sum -c - \
+    && tar -xzf guacamole.tar.gz --strip-components=1 \
+    && patch -p1 < /patches/guacd-freerdp-postconnect.patch \
+    && ./configure CPPFLAGS=-Wno-error=deprecated-declarations --disable-guaclog --with-freerdp-plugin-dir=/usr/lib/freerdp3 \
+    && make -j2 && make install \
+    && mkdir /licenses && cp LICENSE NOTICE /licenses/ \
+    && scanelf --needed --nobanner --recursive /usr/local /usr/lib/freerdp3 \
+      | awk '{gsub(/,/,"\n",$2);print $2}' | sort -u | grep -v '^libguac' \
+      | sed 's/^/so:/' > /runtime-packages
+FROM alpine:3.24
+COPY --from=build /runtime-packages /tmp/runtime-packages
+RUN xargs apk add --no-cache < /tmp/runtime-packages \
+    && apk add --no-cache ca-certificates font-dejavu netcat-openbsd \
+    && mkdir -p /licenses && apk info -a > /licenses/system-packages.txt \
+    && rm /tmp/runtime-packages \
+    && addgroup -g 1000 guacd && adduser -D -u 1000 -G guacd guacd
+COPY --from=build /usr/local/lib/ /usr/local/lib/
+COPY --from=build /usr/lib/freerdp3/libguac*.so /usr/lib/freerdp3/
+COPY --from=build /usr/local/sbin/guacd /usr/local/sbin/guacd
+COPY --from=build /licenses/ /licenses/
+ENV LD_LIBRARY_PATH=/usr/local/lib
+LABEL org.opencontainers.image.source="https://github.com/overnite22/relay-public" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.title="Relay guacd (Apache Guacamole 1.6.0, Alpine 3.24)"
+USER guacd
+EXPOSE 4822
+HEALTHCHECK --interval=30s --timeout=5s CMD nc -z 127.0.0.1 4822 || exit 1
+ENTRYPOINT ["/usr/local/sbin/guacd", "-f", "-b", "0.0.0.0"]

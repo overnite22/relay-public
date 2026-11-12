@@ -45,6 +45,9 @@ func (s *Server) resolveDeviceToken(ctx context.Context, tok string) (string, er
 	if err != nil {
 		return "", err
 	}
+	if s.localMode() && !s.activeLocalUser(ctx, d.User) {
+		return "", auth.ErrUnauthenticated
+	}
 	return d.User, nil
 }
 
@@ -125,7 +128,11 @@ func (s *Server) createDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	secret := base64.RawURLEncoding.EncodeToString(raw)
-	d, err := s.opt.Store.CreateDevice(r.Context(), auth.User(r.Context()), in.Name, hashToken(secret))
+	var proof [][]byte
+	if s.localMode() {
+		proof = [][]byte{localProof(r)}
+	}
+	d, err := s.opt.Store.CreateDevice(r.Context(), auth.User(r.Context()), in.Name, hashToken(secret), proof...)
 	if err != nil {
 		s.fail(w, r, err)
 		return

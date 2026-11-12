@@ -86,7 +86,7 @@ func (s *Server) exportBackup(w http.ResponseWriter, r *http.Request) {
 			_ = os.RemoveAll(dir)
 		}
 	}()
-	err = s.createBackup(r.Context(), dir, in.Password)
+	err = s.createBackup(r.Context(), dir, in.Password, s.backupLocalProof(r)...)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -109,8 +109,8 @@ func (s *Server) exportBackup(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, "relay.relay", info.ModTime(), f)
 }
 
-func (s *Server) createBackup(ctx context.Context, dir, password string) error {
-	snapshot, err := s.opt.Store.Snapshot(ctx)
+func (s *Server) createBackup(ctx context.Context, dir, password string, localAdminProof ...[]byte) error {
+	snapshot, err := s.opt.Store.Snapshot(ctx, localAdminProof...)
 	if err != nil {
 		return err
 	}
@@ -284,7 +284,7 @@ func (s *Server) restoreBackup(w http.ResponseWriter, r *http.Request) {
 		installed = true
 		return nil
 	}
-	err = s.opt.Store.RestoreSnapshot(r.Context(), bundle.Database, prepare)
+	err = s.opt.Store.RestoreSnapshot(r.Context(), bundle.Database, prepare, s.backupLocalProof(r)...)
 	if err != nil {
 		if installed {
 			_ = os.RemoveAll(s.opt.RecordingsDir)
@@ -474,6 +474,9 @@ func (s *Server) canManageBackups(r *http.Request) bool {
 	if auth.Method(r.Context()) == auth.MethodToken {
 		return false
 	}
+	if s.localMode() {
+		return s.localAdministrator(r)
+	}
 	for _, user := range s.opt.AdminUsers {
 		if strings.EqualFold(strings.TrimSpace(user), auth.User(r.Context())) {
 			return true
@@ -483,8 +486,15 @@ func (s *Server) canManageBackups(r *http.Request) bool {
 }
 func (s *Server) backupGuard(w http.ResponseWriter, r *http.Request) bool {
 	if !s.canManageBackups(r) {
-		writeErr(w, http.StatusForbidden, "sauvegardes réservées aux administrateurs configurés, via une session SSO")
+		writeErr(w, http.StatusForbidden, "sauvegardes réservées aux administrateurs configurés, via une session web")
 		return false
 	}
 	return true
+}
+
+func (s *Server) backupLocalProof(r *http.Request) [][]byte {
+	if s.localMode() {
+		return [][]byte{localProof(r)}
+	}
+	return nil
 }
