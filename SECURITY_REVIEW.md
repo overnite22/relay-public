@@ -64,6 +64,8 @@ credential file is included in the public source or Docker build context.
 
 - Formatting, go vet and the full Go test suite.
 - Production web build and npm dependency audit.
+- ELF machine-type checks of amd64 and arm64 binaries. This caught and corrected
+  a Dockerfile default that incorrectly overrode the automatic ARM64 target.
 - govulncheck of reachable Go dependencies.
 - Gitleaks review of the private baseline history and the clean public export.
 - Trivy HIGH/CRITICAL vulnerability scans of Relay, the rebuilt guacd (Alpine 3.24),

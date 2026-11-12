@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:22-alpine AS web
+FROM --platform=$BUILDPLATFORM node:22-alpine AS web
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
@@ -17,14 +17,17 @@ COPY cmd/ ./cmd/
 COPY internal/ ./internal/
 COPY web/assets.go ./web/
 COPY --from=web /src/web/dist ./web/dist
-ARG TARGETOS=linux
-ARG TARGETARCH=amd64
+ARG TARGETOS
+ARG TARGETARCH
 ARG VERSION=dev
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath \
     -ldflags "-s -w -X github.com/overnite22/relay-public/internal/api.Version=${VERSION}" \
     -o /out/relay ./cmd/relay
 
 RUN find /go/pkg/mod -type f -iname 'license*' -exec sh -c 'for f do printf "\n=== %s ===\n" "$f"; cat "$f"; done' sh {} + > /out/go-licenses.txt
+
+FROM scratch AS binaries
+COPY --from=build /out/relay /relay
 
 FROM gcr.io/distroless/static-debian12:nonroot
 ARG VERSION=dev
