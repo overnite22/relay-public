@@ -11,7 +11,8 @@ administration team sharing an inventory and vault. It does not isolate mutually
 
 Requires Docker Engine and Compose v2. No identity provider or application build is required.
 
-1. Download `compose.yaml` and `.env.example` from a tagged release.
+1. Download and extract the Compose installation ZIP from a tagged release. It contains
+   `compose.yaml` and `.env.example`.
 2. Copy `.env.example` to `.env`, then run:
 
    ```sh
