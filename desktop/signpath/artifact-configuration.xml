@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SignPath artifact configuration (slug "msi"). The GitHub artifact is a ZIP
+     holding the MSI: the executable inside is signed first, then the MSI.
+     To validate against the first real signing request. -->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <msi-file path="*.msi">
+      <pe-file path="relay-desktop.exe">
+        <authenticode-sign />
+      </pe-file>
+      <authenticode-sign />
+    </msi-file>
+  </zip-file>
+</artifact-configuration>

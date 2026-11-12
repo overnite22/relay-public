@@ -1,0 +1,111 @@
+name: Desktop
+on:
+  push:
+    branches: [main, desktop]
+    tags: ["desktop-v*"]
+    paths: ["desktop/**", "web/**", ".github/workflows/desktop.yml"]
+  pull_request:
+    paths: ["desktop/**", "web/**", ".github/workflows/desktop.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: desktop
+      - run: cargo fmt --all --check
+      - run: cargo clippy -p relay-desktop-core --all-targets --locked -- -D warnings
+      - run: cargo test -p relay-desktop-core --locked
+
+  msi:
+    needs: core
+    runs-on: windows-latest
+    timeout-minutes: 45
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: desktop
+      - name: Check tag matches the application version
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        shell: bash
+        run: |
+          want="${GITHUB_REF_NAME#desktop-v}"
+          have="$(node -p "require('./desktop/app/tauri.conf.json').version")"
+          test "$want" = "$have" || { echo "tag $want != tauri.conf.json $have"; exit 1; }
+      - name: Build web interface
+        working-directory: web
+        run: npm ci --no-audit --no-fund && npm run build
+      - name: Lint Windows shell
+        working-directory: desktop
+        run: cargo clippy -p relay-desktop --locked -- -D warnings
+      - name: Build MSI
+        working-directory: desktop
+        run: npm ci --no-audit --no-fund && npx tauri build --ci --bundles msi -- --locked
+      - name: Collect MSI
+        shell: bash
+        run: |
+          mkdir dist
+          cp desktop/target/release/bundle/msi/*.msi dist/
+          cd dist && sha256sum *.msi | tee SHA256SUMS
+      - id: upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: relay-desktop-unsigned
+          path: dist/*.msi
+          if-no-files-found: error
+
+  # SignPath Foundation (free code signing for open source). Enabled once the
+  # project is approved and the SIGNPATH_* variables and secret are configured.
+  sign:
+    needs: msi
+    if: startsWith(github.ref, 'refs/tags/desktop-v') && vars.SIGNPATH_PROJECT_SLUG != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: signpath/github-action-submit-signing-request@c92b958760219087e01f8d67a1669ed57afe2627 # v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG || 'release-signing' }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG || 'msi' }}
+          github-artifact-id: ${{ needs.msi.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd signed && sha256sum *.msi > SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --title "Relay Desktop ${GITHUB_REF_NAME#desktop-v}" \
+            --notes "Client Windows de Relay. Installeur MSI signé via SignPath Foundation." *.msi SHA256SUMS
